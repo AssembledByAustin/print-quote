@@ -1,0 +1,980 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Print Quote — rough 3D print estimate</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<style>
+  :root{
+    --bg:#17141f; --bg2:#211d2c; --bg3:#2a2438; --line:#3a3350;
+    --text:#ECE9F2; --muted:#9890a8; --accent:#FFD23F; --accent-dim:#e8b82e;
+    --violet:#8B7BD8; --radius:14px; --radius-sm:10px;
+    --display:'Space Grotesk',ui-sans-serif,system-ui,sans-serif;
+    --body:'Inter',ui-sans-serif,system-ui,-apple-system,sans-serif;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0}
+  body{
+    background:
+      radial-gradient(1100px 700px at 78% -8%, #251e36 0%, rgba(37,30,54,0) 55%),
+      repeating-linear-gradient(0deg, rgba(255,255,255,0.013) 0px, rgba(255,255,255,0.013) 1px, transparent 1px, transparent 5px),
+      var(--bg);
+    color:var(--text); font-family:var(--body); line-height:1.5;
+    -webkit-font-smoothing:antialiased; min-height:100vh;
+  }
+  .wrap{max-width:1080px; margin:0 auto; padding:26px 18px 60px}
+  header.top{display:flex; align-items:center; gap:12px; margin-bottom:6px}
+  .logo{width:34px;height:34px;border-radius:9px;background:linear-gradient(135deg,var(--accent),#ffe785);
+    display:flex;align-items:center;justify-content:center;color:#1a1510;font-weight:700;font-family:var(--display);
+    box-shadow:0 4px 14px rgba(255,210,63,.25)}
+  h1{font-family:var(--display); font-weight:700; font-size:20px; margin:0; letter-spacing:-.01em}
+  .sub{color:var(--muted); font-size:13px; margin:2px 0 22px; max-width:60ch}
+
+  .grid{display:grid; grid-template-columns:1fr 1fr; gap:18px}
+  @media(max-width:820px){ .grid{grid-template-columns:1fr} }
+
+  .card{background:var(--bg2); border:1px solid var(--line); border-radius:var(--radius); padding:18px}
+  .card h2{font-family:var(--display); font-size:12px; letter-spacing:.14em; text-transform:uppercase;
+    color:var(--muted); font-weight:600; margin:0 0 14px}
+
+  /* drop zone + preview */
+  #stage{position:relative; height:300px; border-radius:var(--radius-sm); overflow:hidden;
+    background:radial-gradient(circle at 50% 38%, #2c2540 0%, #1c1828 75%); border:1px dashed var(--line);
+    display:flex;align-items:center;justify-content:center; cursor:pointer; transition:border-color .2s,background .2s}
+  #stage.drag{border-color:var(--accent); background:radial-gradient(circle at 50% 38%,#332a4c,#1c1828)}
+  #stage canvas{display:block}
+  .empty{text-align:center; color:var(--muted); padding:0 24px; pointer-events:none}
+  .empty .big{font-family:var(--display); color:var(--text); font-size:16px; margin-bottom:6px}
+  .empty svg{opacity:.5; margin-bottom:10px}
+  .filebar{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:12px;
+    font-size:13px;color:var(--muted); min-height:20px}
+  .filebar b{color:var(--text); font-weight:600}
+  input[type=file]{display:none}
+
+  label.fld{display:block; font-size:12px; color:var(--muted); margin:0 0 8px; font-weight:500}
+  .group{margin-bottom:18px}
+  .group:last-child{margin-bottom:0}
+
+  /* swatches */
+  .swatches{display:flex;flex-wrap:wrap;gap:9px}
+  .sw{width:30px;height:30px;border-radius:50%;cursor:pointer;border:2px solid transparent;
+    position:relative;transition:transform .12s}
+  .sw:hover{transform:scale(1.08)}
+  .sw.on{border-color:var(--accent); box-shadow:0 0 0 2px var(--bg2),0 0 0 4px var(--accent)}
+  .sw.oos{opacity:.45;cursor:pointer}
+  .sw.oos::after{content:'';position:absolute;left:50%;top:-4px;bottom:-4px;width:2px;
+    background:#e0564f;transform:translateX(-50%) rotate(45deg);border-radius:2px;
+    box-shadow:0 0 0 1px rgba(0,0,0,.35)}
+  .color-note{font-size:12px;color:#e8772e;margin-top:10px;min-height:0;line-height:1.4}
+
+  /* notes box */
+  textarea.notes{width:100%;background:var(--bg3);border:1px solid var(--line);border-radius:var(--radius-sm);
+    color:var(--text);padding:11px 12px;font-family:var(--body);font-size:14px;resize:vertical;min-height:74px}
+  textarea.notes:focus{outline:none;border-color:var(--violet)}
+  textarea.notes::placeholder{color:var(--muted)}
+
+  /* stock editor */
+  .stockgrid{display:grid;grid-template-columns:1fr 1fr;gap:8px 16px}
+  @media(max-width:820px){.stockgrid{grid-template-columns:1fr}}
+  .stock-item{display:flex;align-items:center;gap:9px;font-size:13px;color:var(--text);cursor:pointer}
+  .stock-item .dot{width:18px;height:18px;border-radius:50%;flex:none;border:1px solid var(--line)}
+  .stock-item input{accent-color:var(--accent)}
+  .result-notes{margin-top:14px;border-top:1px solid var(--line);padding-top:12px;text-align:left;font-size:13px}
+  .result-notes .k{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:4px}
+
+  /* pill button groups */
+  .pills{display:flex;flex-wrap:wrap;gap:8px}
+  .pill{font-family:var(--body);font-size:13px;font-weight:500;color:var(--text);
+    background:var(--bg3);border:1px solid var(--line);border-radius:999px;padding:9px 15px;cursor:pointer;
+    transition:all .15s; line-height:1}
+  .pill:hover{border-color:var(--violet)}
+  .pill.on{background:var(--accent);border-color:var(--accent);color:#1a1510;font-weight:600}
+  .pill small{display:block;font-size:10px;opacity:.7;margin-top:3px;font-weight:500}
+  .pill.on small{opacity:.8}
+
+  /* qty stepper */
+  .qty{display:inline-flex;align-items:center;background:var(--bg3);border:1px solid var(--line);
+    border-radius:999px;overflow:hidden}
+  .qty button{width:40px;height:40px;border:0;background:transparent;color:var(--text);font-size:20px;
+    cursor:pointer;font-family:var(--display)}
+  .qty button:hover{color:var(--accent)}
+  .qty input{width:46px;height:40px;border:0;background:transparent;color:var(--text);text-align:center;
+    font-family:var(--display);font-size:16px;font-weight:600;-moz-appearance:textfield}
+  .qty input::-webkit-outer-spin-button,.qty input::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}
+
+  select{width:100%;background:var(--bg3);color:var(--text);border:1px solid var(--line);
+    border-radius:var(--radius-sm);padding:11px 12px;font-family:var(--body);font-size:14px;cursor:pointer;
+    appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath fill='%239890a8' d='M6 8L0 0h12z'/%3E%3C/svg%3E");
+    background-repeat:no-repeat;background-position:right 13px center}
+
+  /* primary CTA */
+  .cta{width:100%;background:var(--accent);color:#1a1510;border:0;border-radius:999px;
+    padding:16px;font-family:var(--display);font-size:16px;font-weight:700;cursor:pointer;margin-top:4px;
+    box-shadow:0 6px 20px rgba(255,210,63,.22);transition:transform .1s,box-shadow .2s,opacity .2s}
+  .cta:hover{transform:translateY(-1px);box-shadow:0 10px 26px rgba(255,210,63,.3)}
+  .cta:active{transform:translateY(0)}
+  .cta:disabled{opacity:.4;cursor:not-allowed;box-shadow:none;transform:none}
+
+  /* result */
+  #result{margin-top:18px}
+  .price-card{background:linear-gradient(135deg,#241b12,#2a2438);border:1px solid var(--accent-dim);
+    border-radius:var(--radius);padding:22px;text-align:center}
+  .price-label{font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--accent);font-weight:600}
+  .price{font-family:var(--display);font-weight:700;font-size:48px;color:var(--accent);line-height:1.05;margin:6px 0 2px}
+  .price-each{color:var(--muted);font-size:13px}
+  .stats{display:flex;justify-content:center;gap:22px;margin-top:16px;flex-wrap:wrap}
+  .stat{text-align:center}
+  .stat .v{font-family:var(--display);font-size:18px;font-weight:600}
+  .stat .k{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em}
+  .breakdown{margin-top:14px;border-top:1px solid var(--line);padding-top:12px;font-size:13px;color:var(--muted)}
+  .brow{display:flex;justify-content:space-between;padding:3px 0}
+  .brow span:last-child{color:var(--text);font-family:var(--display)}
+  .disclaimer{font-size:12px;color:var(--muted);margin-top:14px;text-align:center;line-height:1.5}
+  .badge{display:inline-block;font-size:11px;color:var(--violet);border:1px solid var(--line);
+    border-radius:999px;padding:3px 9px;margin-top:4px}
+
+  /* owner panel (password gated) */
+  .owner{margin-top:22px;background:var(--bg2);border:1px solid var(--line);border-radius:var(--radius);overflow:hidden}
+  .owner-toggle{width:100%;text-align:left;border:0;background:transparent;cursor:pointer;
+    padding:15px 18px;font-size:13px;color:var(--muted);font-family:var(--body);font-weight:500;
+    display:flex;align-items:center;gap:8px}
+  .owner-toggle:hover{color:var(--text)}
+  .owner-toggle .chev{margin-left:auto;transition:transform .2s;color:var(--muted)}
+  .owner.open .owner-toggle{border-bottom:1px solid var(--line);color:var(--text)}
+  .owner.open .owner-toggle .chev{transform:rotate(90deg)}
+  .owner-lock{padding:18px;display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+  .owner-lock input{flex:1;min-width:160px;background:var(--bg3);border:1px solid var(--line);
+    border-radius:999px;color:var(--text);padding:11px 16px;font-family:var(--body);font-size:14px}
+  .owner-lock input:focus{outline:none;border-color:var(--violet)}
+  .owner-lock button{background:var(--accent);color:#1a1510;border:0;border-radius:999px;
+    padding:11px 20px;font-family:var(--display);font-weight:600;font-size:14px;cursor:pointer}
+  .owner-err{flex-basis:100%;font-size:12px;color:#e8772e;min-height:0}
+  .owner-body{padding:18px}
+  .owner-note{font-size:12px;color:var(--muted);margin:0 0 16px}
+  .ownergrid{display:grid;grid-template-columns:1fr 1fr;gap:12px 16px}
+  @media(max-width:820px){.ownergrid{grid-template-columns:1fr}}
+  .field label{display:block;font-size:11px;color:var(--muted);margin-bottom:5px}
+  .field input{width:100%;background:var(--bg3);border:1px solid var(--line);border-radius:var(--radius-sm);
+    color:var(--text);padding:9px 11px;font-family:var(--body);font-size:14px}
+  .field input:focus{outline:none;border-color:var(--violet)}
+  .matrow{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;align-items:center;margin-bottom:8px}
+  .matrow .nm{font-size:13px;font-weight:600;font-family:var(--display)}
+  .matrow input{background:var(--bg3);border:1px solid var(--line);border-radius:8px;color:var(--text);
+    padding:7px 9px;font-size:13px;width:100%;font-family:var(--body)}
+  .toggle-row{display:flex;align-items:center;gap:10px;margin-top:6px;font-size:13px;color:var(--text)}
+  .subhead{font-family:var(--display);font-size:11px;letter-spacing:.1em;text-transform:uppercase;
+    color:var(--violet);margin:18px 0 10px;font-weight:600}
+  .owner-foot{display:flex;align-items:center;gap:14px;margin-top:20px;flex-wrap:wrap}
+  .savemark{font-size:12px;color:var(--accent);opacity:0;transition:opacity .25s}
+  .savemark.show{opacity:1}
+  .reset-btn{background:transparent;border:1px solid var(--line);color:var(--muted);border-radius:999px;
+    padding:8px 16px;font-family:var(--body);font-size:13px;cursor:pointer}
+  .reset-btn:hover{border-color:#e8772e;color:#e8772e}
+  .lock-btn{background:transparent;border:1px solid var(--line);color:var(--muted);border-radius:999px;
+    padding:8px 16px;font-family:var(--body);font-size:13px;cursor:pointer;margin-left:auto}
+  .lock-btn:hover{color:var(--text)}
+
+  /* multi-model list */
+  #itemList{margin-top:12px;display:flex;flex-direction:column;gap:8px}
+  .item{display:flex;align-items:center;gap:11px;background:var(--bg3);border:1px solid var(--line);
+    border-radius:var(--radius-sm);padding:10px 12px;cursor:pointer;transition:border-color .15s}
+  .item:hover{border-color:var(--violet)}
+  .item.sel{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent)}
+  .item-color{width:18px;height:18px;border-radius:50%;flex:none;border:1px solid rgba(255,255,255,.15)}
+  .item-main{flex:1;min-width:0}
+  .item-name{font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .item-meta{font-size:11px;color:var(--muted);margin-top:2px}
+  .item-price{font-family:var(--display);font-size:13px;color:var(--accent);white-space:nowrap}
+  .item-x{border:0;background:transparent;color:var(--muted);font-size:20px;cursor:pointer;line-height:1;padding:0 2px;flex:none}
+  .item-x:hover{color:#e0564f}
+  .add-more{width:100%;margin-top:10px;background:transparent;border:1px dashed var(--line);color:var(--muted);
+    border-radius:var(--radius-sm);padding:11px;font-family:var(--body);font-size:13px;cursor:pointer;transition:all .15s}
+  .add-more:hover{border-color:var(--accent);color:var(--accent)}
+  .opt-for{font-size:12px;color:var(--muted);margin:-6px 0 16px}
+  #optPanel.disabled{opacity:.5;pointer-events:none}
+  .empty-total{margin-top:18px;text-align:center;color:var(--muted);font-size:14px;
+    border:1px dashed var(--line);border-radius:var(--radius);padding:26px}
+  .breakdown2{margin-top:14px;border-top:1px solid var(--line);padding-top:12px;font-size:13px}
+  .inc-row{display:flex;justify-content:space-between;gap:12px;padding:3px 0;color:var(--muted)}
+  .inc-row span:first-child{color:var(--text)}
+  .result-notes div{margin-top:3px}
+
+  /* order placement */
+  .order-card{margin-top:18px;background:var(--bg2);border:1px solid var(--line);border-radius:var(--radius);padding:20px}
+  .order-title{font-family:var(--display);font-size:16px;font-weight:600;margin-bottom:4px}
+  .order-sub{font-size:13px;color:var(--muted);margin:0 0 14px}
+  .ord-input{width:100%;background:var(--bg3);border:1px solid var(--line);border-radius:var(--radius-sm);
+    color:var(--text);padding:11px 12px;font-family:var(--body);font-size:14px;margin-bottom:10px}
+  .ord-input:focus{outline:none;border-color:var(--violet)}
+  .ord-input::placeholder{color:var(--muted)}
+  .ord-status{margin-top:12px;font-size:13px;line-height:1.5}
+  .ord-status .ok{color:var(--accent)}
+  .ord-status .err{color:#e8772e}
+  .order-setup{margin-top:18px;border:1px dashed var(--line);border-radius:var(--radius);padding:16px;
+    font-size:13px;color:var(--muted);text-align:center}
+  footer{text-align:center;color:var(--muted);font-size:12px;margin-top:30px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <div class="logo">3D</div>
+    <div>
+      <h1>Print Quote</h1>
+    </div>
+  </header>
+  <p class="sub">Drop in an STL and get a rough price before you ask me. Estimates are calculated from the model's size and your choices — the real quote is whatever I confirm.</p>
+
+  <div class="grid">
+    <!-- LEFT: upload + preview -->
+    <div class="card">
+      <h2>Your models</h2>
+      <div id="stage">
+        <div class="empty" id="empty">
+          <svg width="46" height="46" viewBox="0 0 24 24" fill="none" stroke="#9890a8" stroke-width="1.4">
+            <path d="M12 3l8 4.5v9L12 21l-8-4.5v-9L12 3z"/><path d="M12 12l8-4.5M12 12v9M12 12L4 7.5"/>
+          </svg>
+          <div class="big">Drop STL files here</div>
+          <div>or tap to choose — add as many as you like</div>
+        </div>
+      </div>
+      <div class="filebar">
+        <span id="fileinfo">No models yet</span>
+        <span id="dims"></span>
+      </div>
+      <div id="itemList"></div>
+      <button class="add-more" id="addMore">+ Add model</button>
+      <input type="file" id="file" accept=".stl" multiple>
+    </div>
+
+    <!-- RIGHT: options -->
+    <div class="card" id="optPanel">
+      <h2>Options</h2>
+      <div class="opt-for" id="optFor"></div>
+
+      <div class="group">
+        <label class="fld">Color</label>
+        <div class="swatches" id="swatches"></div>
+        <div class="color-note" id="colorNote"></div>
+      </div>
+
+      <div class="group">
+        <label class="fld">Material</label>
+        <select id="material"></select>
+      </div>
+
+      <div class="group">
+        <label class="fld">Strength (infill)</label>
+        <div class="pills" id="strength"></div>
+      </div>
+
+      <div class="group">
+        <label class="fld">Model units (how the file was made)</label>
+        <select id="units">
+          <option value="1" selected>Millimeters (most common)</option>
+          <option value="10">Centimeters</option>
+          <option value="25.4">Inches</option>
+        </select>
+      </div>
+
+      <div class="group">
+        <label class="fld">Quantity</label>
+        <div class="qty">
+          <button id="minus" aria-label="decrease">–</button>
+          <input id="qty" type="number" value="1" min="1" max="999">
+          <button id="plus" aria-label="increase">+</button>
+        </div>
+      </div>
+
+      <div class="group">
+        <label class="fld">Notes for this print (optional)</label>
+        <textarea class="notes" id="notes" placeholder="Anything I should know? Sizing, finish, deadline, what it's for…"></textarea>
+      </div>
+    </div>
+  </div>
+
+  <div id="result"></div>
+  <div id="orderArea"></div>
+
+  <!-- OWNER SETTINGS (password gated → opens the Google Sheet that drives the tool) -->
+  <section class="owner" id="owner">
+    <button class="owner-toggle" id="ownerToggle">⚙ &nbsp;Settings <span class="chev">›</span></button>
+
+    <div class="owner-lock" id="ownerLock" hidden>
+      <input type="password" id="ownerPass" placeholder="Enter password" autocomplete="off">
+      <button id="ownerUnlock">Unlock</button>
+      <div class="owner-err" id="ownerErr"></div>
+    </div>
+
+    <div class="owner-body" id="ownerBody" hidden>
+      <p class="owner-note">Settings live in a Google Sheet — open it to change colors, stock, materials, pricing, or the Discord webhook. Friends see your updates the next time they open the tool.</p>
+      <div class="owner-foot">
+        <a class="cta" id="openSheet" href="#" target="_blank" rel="noopener" style="text-decoration:none;display:inline-block;width:auto;padding:12px 22px;margin:0">Open settings sheet ↗</a>
+        <button class="lock-btn" id="ownerLockBtn">Lock</button>
+      </div>
+      <p class="owner-note" id="noSheetMsg" style="margin-top:14px;color:#e8772e" hidden>No settings link set. Add a <code>settingsUrl</code> in CONFIG (a regular Google Sheets edit URL) so this button works.</p>
+    </div>
+  </section>
+
+  <footer>Rough Option-A estimate · volume-based, not a real slice · always confirm before printing</footer>
+</div>
+
+<script>
+/* ============================================================
+   CONFIG — edit these defaults to lock in YOUR real pricing
+   ============================================================ */
+const CONFIG = {
+  materials: {
+    PLA:  { density: 1.24, costPerKg: 22 },
+    PETG: { density: 1.27, costPerKg: 26 },
+    PC:   { density: 1.20, costPerKg: 40 },
+    TPU:  { density: 1.21, costPerKg: 38 },
+  },
+  // Casual gate to keep friends out of pricing. NOTE: this is client-side,
+  // so it deters tinkering but isn't true security — change it from the default.
+  ownerPassword: 'changeme',
+  throughput: 20,     // grams of filament laid down per hour (calibrate to real jobs)
+  hourlyRate: 0,      // $/hr for power + wear + your time tending it
+  handling:   0,      // flat $ per job (setup, plate prep, removal, packing)
+  markupLow:  1.5,    // low-end profit multiplier -> bottom of the quoted range
+  markupHigh: 2.0,    // high-end profit multiplier -> top of the quoted range
+  floor:      0,      // minimum $ per item so tiny prints never lose money
+  wall:       1.2,    // effective solid-shell thickness (mm)
+  brimLines:  8, brimLineWidth: 0.42, firstLayer: 0.2,
+  overhangDeg: 50, supportDensity: 0.12,
+  addBrim: false, addSupports: true,
+  // Order delivery (Discord) — set these in Settings
+  discordWebhook: 'https://discord.com/api/webhooks/1517719456229621893/7yGy2o9l2SSDmqe3Kjq3qnHDsxW4YAmRhFNXnXtesibKi_zWpWR3xDwiFWYhOvQZjQIO',  // your channel webhook URL
+  ownerContact: '',         // shown to friends for files too big to attach
+  discordFileLimitMB: 10,   // 10 on a free server; 50 at Boost Level 2
+  stock: {},          // color-name -> true/false; filled in (all true) on first run
+  // Google Sheet (published-to-web CSVs) — source of truth at runtime; baked-in values are the fallback
+  sheets: {
+    colors:    'https://docs.google.com/spreadsheets/d/e/2PACX-1vR5kJeH4Il9y94379oYxf24p_CRY1SoloPxJ0ILlwEsijLEOMH1NUyAAmiKRbEVeA/pub?gid=1022333015&single=true&output=csv',
+    materials: 'https://docs.google.com/spreadsheets/d/e/2PACX-1vR5kJeH4Il9y94379oYxf24p_CRY1SoloPxJ0ILlwEsijLEOMH1NUyAAmiKRbEVeA/pub?gid=1358918205&single=true&output=csv',
+    pricing:   'https://docs.google.com/spreadsheets/d/e/2PACX-1vR5kJeH4Il9y94379oYxf24p_CRY1SoloPxJ0ILlwEsijLEOMH1NUyAAmiKRbEVeA/pub?gid=1618694996&single=true&output=csv',
+    delivery:  'https://docs.google.com/spreadsheets/d/e/2PACX-1vR5kJeH4Il9y94379oYxf24p_CRY1SoloPxJ0ILlwEsijLEOMH1NUyAAmiKRbEVeA/pub?gid=448487320&single=true&output=csv',
+  },
+  // Link friends/you to the editable sheet (Drive viewer URL is fine — leave blank to hide the link)
+  settingsUrl: '',
+};
+
+let COLORS = [
+  ['Black','#1c1c1f'],['White','#f2f2f2'],['Gray','#8a8a90'],['Silver','#c7ccd1'],
+  ['Red','#d23b3b'],['Orange','#e8772e'],['Yellow','#f4c430'],['Green','#3faa54'],
+  ['Teal','#2bb6a8'],['Blue','#3b6fd2'],['Purple','#8B5CF6'],['Pink','#e673a8'],
+];
+const STRENGTHS = [
+  ['Draft','10%',0.10],['Standard','20%',0.20],['Strong','40%',0.40],
+  ['Heavy','60%',0.60],['Solid','100%',1.00],
+];
+let MAT_NAMES = { PLA:'PLA', PETG:'PETG', PC:'Polycarbonate (PC)', TPU:'TPU (flexible)' };
+
+/* ---------- state: a list of models, each configured independently ---------- */
+let items = [];           // { id, name, tris, color, material, infill, qty, notes, unitScale }
+let selectedId = null;
+let uid = 0;
+function makeItem(name, tris, blob, size){
+  return { id:++uid, name, tris, fileBlob:blob, fileSize:size||0, color:'#8B5CF6', material:'PLA', infill:0.20, qty:1, notes:'', unitScale:1 };
+}
+function current(){ return items.find(i=>i.id===selectedId) || null; }
+function ensureStock(){ COLORS.forEach(([name])=>{ if(!(name in CONFIG.stock)) CONFIG.stock[name]=true; }); }
+function esc(s){ return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
+/* ============================================================
+   STL parsing (binary + ASCII) -> Float32Array (9 floats/tri)
+   ============================================================ */
+function parseSTL(buffer){
+  const dv = new DataView(buffer);
+  // detect ASCII: starts with "solid" AND no plausible binary tri count match
+  const head = new TextDecoder().decode(new Uint8Array(buffer,0,Math.min(512,buffer.byteLength))).trim();
+  const looksAscii = head.startsWith('solid') && head.includes('facet');
+  if(looksAscii) return parseAscii(new TextDecoder().decode(new Uint8Array(buffer)));
+  return parseBinary(dv);
+}
+function parseBinary(dv){
+  const n = dv.getUint32(80,true);
+  if(84 + n*50 > dv.byteLength) throw new Error('That file doesn’t look like a valid STL.');
+  const pos = new Float32Array(n*9); let off=84;
+  for(let i=0;i<n;i++){ off+=12; for(let v=0;v<9;v++){ pos[i*9+v]=dv.getFloat32(off,true); off+=4; } off+=2; }
+  return pos;
+}
+function parseAscii(txt){
+  const nums = txt.match(/vertex\s+([-\d.eE+]+)\s+([-\d.eE+]+)\s+([-\d.eE+]+)/g) || [];
+  const pos = new Float32Array(nums.length*3);
+  for(let i=0;i<nums.length;i++){
+    const m = nums[i].match(/vertex\s+([-\d.eE+]+)\s+([-\d.eE+]+)\s+([-\d.eE+]+)/);
+    pos[i*3]=+m[1]; pos[i*3+1]=+m[2]; pos[i*3+2]=+m[3];
+  }
+  return pos;
+}
+
+/* ============================================================
+   Geometry metrics (validated against a known cube)
+   ============================================================ */
+function metrics(pos, s){
+  let vol=0, area=0, minx=1/0,miny=1/0,minz=1/0,maxx=-1/0,maxy=-1/0,maxz=-1/0;
+  for(let i=0;i<pos.length;i+=9){
+    const ax=pos[i]*s,ay=pos[i+1]*s,az=pos[i+2]*s,
+          bx=pos[i+3]*s,by=pos[i+4]*s,bz=pos[i+5]*s,
+          cx=pos[i+6]*s,cy=pos[i+7]*s,cz=pos[i+8]*s;
+    vol += (ax*(by*cz-bz*cy)+ay*(bz*cx-bx*cz)+az*(bx*cy-by*cx))/6;
+    const ux=bx-ax,uy=by-ay,uz=bz-az, vx=cx-ax,vy=cy-ay,vz=cz-az;
+    const nx=uy*vz-uz*vy,ny=uz*vx-ux*vz,nz=ux*vy-uy*vx;
+    area += Math.hypot(nx,ny,nz)/2;
+    minx=Math.min(minx,ax,bx,cx); maxx=Math.max(maxx,ax,bx,cx);
+    miny=Math.min(miny,ay,by,cy); maxy=Math.max(maxy,ay,by,cy);
+    minz=Math.min(minz,az,bz,cz); maxz=Math.max(maxz,az,bz,cz);
+  }
+  return {volume:Math.abs(vol),area,minx,miny,minz,maxx,maxy,maxz};
+}
+function footprintPerimeter(pos,s,minz){
+  const pts=[];
+  for(let i=0;i<pos.length;i+=3){ if(pos[i+2]*s<=minz+0.5) pts.push([pos[i]*s,pos[i+1]*s]); }
+  if(pts.length<3) return 0;
+  pts.sort((a,b)=>a[0]-b[0]||a[1]-b[1]);
+  const cr=(o,a,b)=>(a[0]-o[0])*(b[1]-o[1])-(a[1]-o[1])*(b[0]-o[0]);
+  const lo=[],up=[];
+  for(const p of pts){ while(lo.length>=2&&cr(lo[lo.length-2],lo[lo.length-1],p)<=0)lo.pop(); lo.push(p);}
+  for(let i=pts.length-1;i>=0;i--){const p=pts[i];while(up.length>=2&&cr(up[up.length-2],up[up.length-1],p)<=0)up.pop();up.push(p);}
+  const h=lo.slice(0,-1).concat(up.slice(0,-1)); let per=0;
+  for(let i=0;i<h.length;i++){const a=h[i],b=h[(i+1)%h.length];per+=Math.hypot(a[0]-b[0],a[1]-b[1]);}
+  return per;
+}
+function supportVolume(pos,s,minz,degTh,density){
+  const cosT=Math.cos(degTh*Math.PI/180); let projA=0,hSum=0,c=0;
+  for(let i=0;i<pos.length;i+=9){
+    const ax=pos[i]*s,ay=pos[i+1]*s,az=pos[i+2]*s,bx=pos[i+3]*s,by=pos[i+4]*s,bz=pos[i+5]*s,cx=pos[i+6]*s,cy=pos[i+7]*s,cz=pos[i+8]*s;
+    const ux=bx-ax,uy=by-ay,uz=bz-az,vx=cx-ax,vy=cy-ay,vz=cz-az;
+    let nx=uy*vz-uz*vy,ny=uz*vx-ux*vz,nz=ux*vy-uy*vx; const L=Math.hypot(nx,ny,nz)||1; nz/=L;
+    if(nz>=0) continue;
+    const fmin=Math.min(az,bz,cz); if(fmin<=minz+0.5) continue;
+    if(-nz<cosT) continue;
+    projA += (L/2)*(-nz); hSum += (fmin-minz); c++;
+  }
+  if(!c) return 0;
+  return projA*(hSum/c)*density;
+}
+
+/* ============================================================
+   Cost estimate
+   ============================================================ */
+function estimate(it){
+  const s = it.unitScale;
+  const m = metrics(it.tris,s);
+  const mat = CONFIG.materials[it.material];
+  const shell = Math.min(m.area*CONFIG.wall, m.volume);
+  const interior = Math.max(m.volume-shell,0);
+  let vol = shell + interior*it.infill;                        // printed plastic (mm³)
+  let brimVol=0, supVol=0;
+  if(CONFIG.addBrim){
+    const per=footprintPerimeter(it.tris,s,m.minz);
+    brimVol = per*(CONFIG.brimLines*CONFIG.brimLineWidth)*CONFIG.firstLayer;
+  }
+  if(CONFIG.addSupports){
+    supVol = supportVolume(it.tris,s,m.minz,CONFIG.overhangDeg,CONFIG.supportDensity);
+  }
+  const grams = (vol+brimVol+supVol)*mat.density/1000;
+  const timeHr = grams/CONFIG.throughput;
+  const unitBase = grams*mat.costPerKg/1000 + timeHr*CONFIG.hourlyRate + CONFIG.handling;
+  const unitLow  = Math.max(unitBase*CONFIG.markupLow,  CONFIG.floor);
+  const unitHigh = Math.max(unitBase*CONFIG.markupHigh, CONFIG.floor);
+  return {grams,timeHr,unitLow,unitHigh,
+          totalLow:unitLow*it.qty,totalHigh:unitHigh*it.qty,
+          dims:[m.maxx-m.minx,m.maxy-m.miny,m.maxz-m.minz],
+          hasSupport:supVol>0.5};
+}
+
+/* ============================================================
+   3D preview (graceful if three.js is unavailable)
+   ============================================================ */
+let renderer,scene,camera,meshGroup,mesh,dragging=false,lastX,lastY,raf;
+const HAVE_THREE = typeof THREE !== 'undefined';
+function initThree(){
+  if(!HAVE_THREE) return;
+  const stage=document.getElementById('stage');
+  scene=new THREE.Scene();
+  camera=new THREE.PerspectiveCamera(45, stage.clientWidth/stage.clientHeight, 0.1, 5000);
+  camera.position.set(0,0,160);
+  renderer=new THREE.WebGLRenderer({antialias:true,alpha:true});
+  renderer.setPixelRatio(Math.min(devicePixelRatio,2));
+  renderer.setSize(stage.clientWidth, stage.clientHeight);
+  scene.add(new THREE.AmbientLight(0xffffff,0.55));
+  const d1=new THREE.DirectionalLight(0xffffff,0.9); d1.position.set(60,80,100); scene.add(d1);
+  const d2=new THREE.DirectionalLight(0x8B7BD8,0.4); d2.position.set(-80,-40,-60); scene.add(d2);
+  meshGroup=new THREE.Group(); scene.add(meshGroup);
+  animate();
+  window.addEventListener('resize',()=>{ if(!renderer)return;
+    camera.aspect=stage.clientWidth/stage.clientHeight; camera.updateProjectionMatrix();
+    renderer.setSize(stage.clientWidth,stage.clientHeight);});
+}
+function animate(){ raf=requestAnimationFrame(animate);
+  if(meshGroup && !dragging) meshGroup.rotation.y+=0.005;
+  if(renderer) renderer.render(scene,camera); }
+function showMesh(){
+  if(!HAVE_THREE) return;
+  const it=current(); if(!it) return;
+  const stage=document.getElementById('stage');
+  if(!renderer){ initThree(); stage.appendChild(renderer.domElement); }
+  if(mesh){ meshGroup.remove(mesh); mesh.geometry.dispose(); mesh.material.dispose(); }
+  const g=new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.BufferAttribute(it.tris.slice(),3));
+  g.computeVertexNormals(); g.computeBoundingBox();
+  const c=g.boundingBox.getCenter(new THREE.Vector3());
+  g.translate(-c.x,-c.y,-c.z);
+  const size=g.boundingBox.getSize(new THREE.Vector3());
+  const maxD=Math.max(size.x,size.y,size.z)||1;
+  const mat=new THREE.MeshStandardMaterial({color:new THREE.Color(it.color),roughness:0.62,metalness:0.05,flatShading:false});
+  mesh=new THREE.Mesh(g,mat);
+  mesh.rotation.x=-Math.PI/2;              // STL Z-up -> screen
+  mesh.scale.setScalar(90/maxD);
+  meshGroup.add(mesh); meshGroup.rotation.set(0,0,0);
+  camera.position.set(0,40,170);
+  camera.lookAt(0,0,0);
+}
+function clearMesh(){ if(mesh){ meshGroup.remove(mesh); mesh.geometry.dispose(); mesh.material.dispose(); mesh=null; } }
+function updateMeshColor(){ const it=current(); if(mesh&&it) mesh.material.color.set(it.color); }
+
+/* drag-to-rotate */
+(function(){
+  const stage=document.getElementById('stage');
+  const down=e=>{dragging=true;const p=e.touches?e.touches[0]:e;lastX=p.clientX;lastY=p.clientY;};
+  const move=e=>{if(!dragging||!meshGroup)return;const p=e.touches?e.touches[0]:e;
+    meshGroup.rotation.y+=(p.clientX-lastX)*0.01; meshGroup.rotation.x+=(p.clientY-lastY)*0.01;
+    lastX=p.clientX;lastY=p.clientY; if(e.touches)e.preventDefault();};
+  const up=()=>dragging=false;
+  stage.addEventListener('mousedown',down); window.addEventListener('mousemove',move); window.addEventListener('mouseup',up);
+  stage.addEventListener('touchstart',down,{passive:true}); stage.addEventListener('touchmove',move,{passive:false}); stage.addEventListener('touchend',up);
+})();
+
+/* ============================================================
+   File handling
+   ============================================================ */
+function loadFiles(fileList){
+  const files=[...fileList].filter(f=>/\.stl$/i.test(f.name));
+  if(!files.length){ flashFileMsg('Please choose .stl files.'); return; }
+  let pending=files.length, firstNew=null, bad=0;
+  files.forEach(file=>{
+    const r=new FileReader();
+    r.onload=()=>{
+      try{
+        const t=parseSTL(r.result);
+        if(!t.length) throw 0;
+        const it=makeItem(file.name,t,new Blob([r.result]),file.size); items.push(it); if(firstNew===null) firstNew=it.id;
+      }catch(e){ bad++; }
+      if(--pending===0) finishLoad(firstNew,bad);
+    };
+    r.onerror=()=>{ bad++; if(--pending===0) finishLoad(firstNew,bad); };
+    r.readAsArrayBuffer(file);
+  });
+}
+function finishLoad(firstNew,bad){
+  if(firstNew!==null) selectedId=firstNew;
+  renderAll();
+  if(firstNew!==null) showMesh();
+  if(bad) flashFileMsg(bad+' file'+(bad>1?'s':'')+" couldn't be read and "+(bad>1?'were':'was')+' skipped.');
+}
+function flashFileMsg(msg){
+  document.getElementById('fileinfo').innerHTML='<span style="color:#e8772e">'+esc(msg)+'</span>';
+}
+function refreshDims(){
+  const it=current(); const d=document.getElementById('dims');
+  if(!it){ d.textContent=''; return; }
+  const m=metrics(it.tris,it.unitScale); const f=n=>n.toFixed(n<10?1:0);
+  d.textContent=f(m.maxx-m.minx)+' × '+f(m.maxy-m.miny)+' × '+f(m.maxz-m.minz)+' mm';
+}
+
+/* ============================================================
+   Result render
+   ============================================================ */
+function fmtTime(h){
+  const mins=Math.round(h*60);
+  if(mins<60) return mins+' min';
+  return Math.floor(mins/60)+'h '+(mins%60)+'m';
+}
+function renderAll(){ renderItems(); renderTotals(); syncOptions(); updateStageEmpty(); updateOrderArea(); }
+
+function updateStageEmpty(){
+  const it=current();
+  document.getElementById('empty').style.display = items.length ? 'none':'block';
+  document.getElementById('fileinfo').innerHTML = it ? '<b>'+esc(it.name)+'</b>' : 'No models yet';
+  refreshDims();
+}
+function renderItems(){
+  const wrap=document.getElementById('itemList'); wrap.innerHTML='';
+  items.forEach(it=>{
+    const r=estimate(it);
+    const card=document.createElement('div');
+    card.className='item'+(it.id===selectedId?' sel':'');
+    card.innerHTML=`<span class="item-color" style="background:${it.color}"></span>
+      <div class="item-main">
+        <div class="item-name">${esc(it.name)}</div>
+        <div class="item-meta">${it.material} · ${it.infill*100|0}% · ×${it.qty}</div>
+      </div>
+      <div class="item-price">$${r.totalLow.toFixed(2)} – $${r.totalHigh.toFixed(2)}</div>
+      <button class="item-x" title="Remove">×</button>`;
+    card.onclick=e=>{ if(e.target.classList.contains('item-x')) return; selectItem(it.id); };
+    card.querySelector('.item-x').onclick=e=>{ e.stopPropagation(); removeItem(it.id); };
+    wrap.appendChild(card);
+  });
+}
+function renderTotals(){
+  const el=document.getElementById('result');
+  if(!items.length){ el.innerHTML='<div class="empty-total">Add one or more models to see an estimate.</div>'; return; }
+  let lo=0,hi=0,grams=0,time=0,pieces=0; const lines=[];
+  items.forEach(it=>{ const r=estimate(it);
+    lo+=r.totalLow; hi+=r.totalHigh; grams+=r.grams*it.qty; time+=r.timeHr*it.qty; pieces+=it.qty;
+    const cn=(COLORS.find(c=>c[1]===it.color)||['custom'])[0];
+    lines.push(`<div class="inc-row"><span>${esc(it.name)} ×${it.qty}</span><span>${cn} · ${it.material}</span></div>`);
+  });
+  const noted=items.filter(it=>it.notes&&it.notes.trim());
+  el.innerHTML=`
+    <div class="price-card">
+      <div class="price-label">Estimated range · ${items.length} model${items.length>1?'s':''}</div>
+      <div class="price">$${lo.toFixed(2)} – $${hi.toFixed(2)}</div>
+      <div class="price-each">${pieces} piece${pieces>1?'s':''} total</div>
+      <div class="stats">
+        <div class="stat"><div class="v">${grams.toFixed(1)} g</div><div class="k">Total filament</div></div>
+        <div class="stat"><div class="v">${fmtTime(time)}</div><div class="k">Total print time</div></div>
+        <div class="stat"><div class="v">${items.length}</div><div class="k">Models</div></div>
+      </div>
+      <div class="breakdown2">${lines.join('')}</div>
+      ${noted.length?'<div class="result-notes"><div class="k">Notes</div>'+noted.map(it=>'<div>• '+esc(it.name)+': '+esc(it.notes.trim())+'</div>').join('')+'</div>':''}
+      <div class="disclaimer">A rough range from each model's size, not an exact slice — the real number lands somewhere in here and I'll confirm it. Print time is approximate.</div>
+    </div>`;
+}
+function selectItem(id){ selectedId=id; showMesh(); renderItems(); syncOptions(); updateStageEmpty(); }
+function removeItem(id){
+  items=items.filter(i=>i.id!==id);
+  if(selectedId===id) selectedId = items.length?items[items.length-1].id:null;
+  if(selectedId) showMesh(); else clearMesh();
+  renderAll();
+}
+function refreshItem(){ renderItems(); renderTotals(); refreshDims(); }
+function setSwatchSelection(hex){
+  [...document.getElementById('swatches').children].forEach(c=>c.classList.toggle('on', c.dataset.hex===hex));
+}
+function syncOptions(){
+  const it=current();
+  const panel=document.getElementById('optPanel'), optFor=document.getElementById('optFor');
+  if(!it){ panel.classList.add('disabled'); optFor.textContent='Add a model to set its options.';
+           document.getElementById('colorNote').textContent=''; return; }
+  panel.classList.remove('disabled');
+  optFor.innerHTML='Editing: <b>'+esc(it.name)+'</b>';
+  setSwatchSelection(it.color);
+  document.getElementById('material').value=it.material;
+  [...document.getElementById('strength').children].forEach(b=>b.classList.toggle('on', +b.dataset.val===it.infill));
+  document.getElementById('units').value=String(it.unitScale);
+  document.getElementById('qty').value=it.qty;
+  document.getElementById('notes').value=it.notes;
+  const cn=(COLORS.find(c=>c[1]===it.color)||[null])[0];
+  showColorNote(cn, cn?CONFIG.stock[cn]!==false:true);
+}
+
+/* ---------- order placement (Discord) ---------- */
+function buildOrderArea(){
+  const a=document.getElementById('orderArea');
+  a.innerHTML=`
+    <div class="order-card" id="orderCard" hidden>
+      <div class="order-title">Place your order</div>
+      <p class="order-sub">Send these models to Austin to print — no Discord account needed on your end.</p>
+      <input class="ord-input" id="ordName" placeholder="Your name" autocomplete="off">
+      <input class="ord-input" id="ordContact" placeholder="Email, phone, or Discord — so Austin can reach you" autocomplete="off">
+      <button class="cta" id="ordSend">Send order to Austin</button>
+      <div class="ord-status" id="ordStatus"></div>
+    </div>
+    <div class="order-setup" id="orderSetup" hidden>Ordering isn’t set up yet — add your Discord webhook in Settings to turn it on.</div>`;
+  document.getElementById('ordSend').onclick=sendOrder;
+}
+function updateOrderArea(){
+  const hasItems=items.length>0, hasHook=!!CONFIG.discordWebhook;
+  document.getElementById('orderCard').hidden = !(hasItems && hasHook);
+  document.getElementById('orderSetup').hidden = !(hasItems && !hasHook);
+}
+async function postDiscord(payload, blob, filename){
+  const fd=new FormData();
+  fd.append('payload_json', JSON.stringify(payload));   // multipart avoids a CORS preflight
+  if(blob) fd.append('files[0]', blob, filename);
+  for(let attempt=0; attempt<3; attempt++){
+    const res=await fetch(CONFIG.discordWebhook, {method:'POST', body:fd}); // no custom headers on purpose
+    if(res.status===429){                                // rate limited — honor retry_after and try again
+      let wait=1000; try{ const j=await res.json(); if(j.retry_after) wait=j.retry_after*1000; }catch(e){}
+      await new Promise(r=>setTimeout(r, wait+250)); continue;
+    }
+    if(!res.ok) throw new Error('Discord '+res.status);
+    return;
+  }
+  throw new Error('Discord rate limit — please try again in a moment');
+}
+async function sendOrder(){
+  const name=document.getElementById('ordName').value.trim();
+  const contact=document.getElementById('ordContact').value.trim();
+  const status=document.getElementById('ordStatus');
+  if(!items.length) return;
+  if(!CONFIG.discordWebhook){ status.innerHTML='<span class="err">Ordering isn’t set up yet.</span>'; return; }
+  if(!name||!contact){ status.innerHTML='<span class="err">Please add your name and a way to reach you.</span>'; return; }
+  const btn=document.getElementById('ordSend'); const old=btn.textContent;
+  btn.disabled=true; btn.textContent='Sending…'; status.textContent='';
+  try{
+    const limitBytes=Math.max(CONFIG.discordFileLimitMB*1024*1024 - 300*1024, 200*1024);
+    let lo=0,hi=0,grams=0,time=0,pieces=0; const lines=[], big=[];
+    items.forEach(it=>{ const r=estimate(it);
+      lo+=r.totalLow; hi+=r.totalHigh; grams+=r.grams*it.qty; time+=r.timeHr*it.qty; pieces+=it.qty;
+      const cn=(COLORS.find(c=>c[1]===it.color)||['custom'])[0];
+      const tooBig=it.fileSize>limitBytes; if(tooBig) big.push(it.name);
+      lines.push('• '+it.name+' ×'+it.qty+' — '+cn+' · '+it.material+' · '+(it.infill*100|0)+'% — $'+r.totalLow.toFixed(2)+'–$'+r.totalHigh.toFixed(2)
+        +(it.notes&&it.notes.trim()?'\n   ↳ '+it.notes.trim():'')
+        +(tooBig?'  ⚠ file sent separately':''));
+    });
+    let desc='**From:** '+name+'\n**Contact:** '+contact+'\n\n**Models:**\n'+lines.join('\n')
+      +'\n\n**Estimated total:** $'+lo.toFixed(2)+' – $'+hi.toFixed(2)
+      +'\n'+pieces+' piece'+(pieces>1?'s':'')+' · '+grams.toFixed(0)+' g · ~'+fmtTime(time)+' print time';
+    if(big.length) desc+='\n\n⚠ **Coming separately (too big for Discord):** '+big.join(', ');
+    desc=desc.slice(0,4000);
+    await postDiscord({username:'Print Quote', embeds:[{title:'🖨️ New print order', description:desc, color:16765247}]});
+    for(const it of items){
+      const cn=(COLORS.find(c=>c[1]===it.color)||['custom'])[0];
+      if(it.fileSize>limitBytes){
+        await postDiscord({username:'Print Quote', content:'⚠ **'+it.name+'** ('+(it.fileSize/1048576).toFixed(1)+' MB) is too large to attach — '+name+' will send it to you directly.'});
+      } else {
+        await postDiscord({username:'Print Quote', content:'📎 **'+it.name+'** — '+cn+' · '+it.material+' · '+(it.infill*100|0)+'% · ×'+it.qty}, it.fileBlob, it.name);
+      }
+      await new Promise(r=>setTimeout(r,300));   // gentle spacing so Discord doesn't throttle multi-model orders
+    }
+    let msg='✅ Order sent! Austin got your '+items.length+' model'+(items.length>1?'s':'')+'.';
+    if(big.length){ msg+=' A couple of files were too large to send here — please send these to Austin directly'
+      +(CONFIG.ownerContact?(' at '+CONFIG.ownerContact):'')+': '+big.join(', ')+'.'; }
+    status.innerHTML='<span class="ok">'+esc(msg)+'</span>';
+    btn.textContent='Order sent ✓';
+  }catch(err){
+    status.innerHTML='<span class="err">Couldn’t send the order ('+esc(err.message)+'). Please try again'
+      +(CONFIG.ownerContact?(', or reach Austin at '+esc(CONFIG.ownerContact)):'')+'.</span>';
+    btn.disabled=false; btn.textContent=old;
+  }
+}
+
+/* ============================================================
+   UI wiring
+   ============================================================ */
+function buildSwatches(){
+  const w=document.getElementById('swatches'); w.innerHTML='';
+  COLORS.forEach(([name,hex])=>{
+    const inStock=CONFIG.stock[name]!==false;
+    const d=document.createElement('div');
+    d.className='sw'+(inStock?'':' oos'); d.dataset.hex=hex;
+    d.style.background=hex;
+    d.title=inStock?name:name+' — out of stock (can be ordered in)';
+    d.onclick=()=>{ const it=current(); if(!it) return;
+      it.color=hex; setSwatchSelection(hex); updateMeshColor(); showColorNote(name,inStock); refreshItem(); };
+    w.appendChild(d);
+  });
+}
+function showColorNote(name,inStock){
+  const el=document.getElementById('colorNote'); if(!el) return;
+  el.textContent = inStock ? '' : name+' is out of stock — I can order it in for your print (may add a little lead time).';
+}
+function buildMaterials(){
+  const sel=document.getElementById('material');
+  Object.keys(CONFIG.materials).forEach(k=>{ const o=document.createElement('option'); o.value=k; o.textContent=MAT_NAMES[k]||k; sel.appendChild(o); });
+  sel.onchange=()=>{ const it=current(); if(it){ it.material=sel.value; refreshItem(); } };
+}
+function buildStrength(){
+  const w=document.getElementById('strength'); w.innerHTML='';
+  STRENGTHS.forEach(([name,pct,val])=>{
+    const b=document.createElement('button'); b.className='pill'; b.dataset.val=val;
+    b.innerHTML=name+'<small>'+pct+'</small>';
+    b.onclick=()=>{ const it=current(); if(!it) return; it.infill=val;
+      [...w.children].forEach(c=>c.classList.remove('on')); b.classList.add('on'); refreshItem(); };
+    w.appendChild(b);
+  });
+}
+function wireQty(){
+  const inp=document.getElementById('qty');
+  const set=v=>{ v=Math.max(1,Math.min(999,v|0||1)); inp.value=v; const it=current(); if(it){ it.qty=v; refreshItem(); } };
+  document.getElementById('minus').onclick=()=>set((current()?current().qty:1)-1);
+  document.getElementById('plus').onclick=()=>set((current()?current().qty:1)+1);
+  inp.onchange=()=>set(+inp.value);
+}
+function wireUnits(){
+  document.getElementById('units').onchange=e=>{ const it=current(); if(it){ it.unitScale=+e.target.value; refreshItem(); } };
+}
+/* ---------- Google Sheet loader ----------
+   Each published tab is a CSV with a header row. We parse by column name so
+   row order or extra columns don't break anything, and silently fall back to
+   the baked-in defaults if a fetch fails (network blip, sheet unpublished, etc).
+*/
+function parseCSV(text){
+  // Strip UTF-8 BOM that Google sometimes prepends
+  if(text.charCodeAt(0)===0xFEFF) text=text.slice(1);
+  const rows=[]; let row=[], cell='', q=false;
+  for(let i=0;i<text.length;i++){
+    const c=text[i];
+    if(q){
+      if(c==='"' && text[i+1]==='"'){ cell+='"'; i++; }
+      else if(c==='"'){ q=false; }
+      else cell+=c;
+    } else {
+      if(c==='"') q=true;
+      else if(c===','){ row.push(cell); cell=''; }
+      else if(c==='\n'){ row.push(cell); rows.push(row); row=[]; cell=''; }
+      else if(c==='\r'){ /* skip */ }
+      else cell+=c;
+    }
+  }
+  if(cell.length||row.length){ row.push(cell); rows.push(row); }
+  if(!rows.length) return [];
+  const headers=rows[0].map(h=>h.trim());
+  return rows.slice(1).filter(r=>r.some(c=>String(c).trim()!=='')).map(r=>{
+    const o={}; headers.forEach((h,i)=>o[h]=(r[i]??'').trim()); return o;
+  });
+}
+function csvBool(v){
+  if(typeof v==='boolean') return v;
+  const s=String(v||'').trim().toLowerCase();
+  return s==='true'||s==='yes'||s==='1'||s==='y';
+}
+function csvNum(v, fallback){
+  const n=parseFloat(String(v||'').replace(/[$,\s]/g,''));
+  return Number.isFinite(n)?n:fallback;
+}
+async function fetchCSV(url){
+  if(!url) return null;
+  try{
+    // Cache-bust so edits in the Sheet show up promptly
+    const u=url+(url.includes('?')?'&':'?')+'_cb='+Math.floor(Date.now()/60000); // 1-minute granularity
+    const r=await fetch(u, {cache:'no-store'});
+    if(!r.ok) throw new Error('HTTP '+r.status);
+    return parseCSV(await r.text());
+  }catch(e){
+    if(location.protocol==='file:'){
+      console.warn('[Print Quote] Sheet fetch blocked because the page was opened from disk (origin = null).\nDeploy it (GitHub Pages / Cloudflare Pages) or serve locally with `python3 -m http.server` and open via http://localhost:8080/.');
+    } else {
+      console.warn('[Print Quote] Sheet fetch failed — using baked-in fallback values. URL:', url, 'Reason:', e && e.message);
+    }
+    return null;
+  }
+}
+
+async function loadFromSheet(){
+  const S=CONFIG.sheets||{};
+  const [colorRows, matRows, priceRows, deliveryRows] = await Promise.all([
+    fetchCSV(S.colors), fetchCSV(S.materials), fetchCSV(S.pricing), fetchCSV(S.delivery)
+  ]);
+  // Colors → replace list and seed stock map
+  if(colorRows && colorRows.length){
+    const list=[], stock={};
+    colorRows.forEach(r=>{
+      const name=(r.name||'').trim(); let hex=(r.hex||'').trim();
+      if(!name||!hex) return;
+      if(!hex.startsWith('#')) hex='#'+hex;
+      if(!/^#[0-9a-fA-F]{6}$/.test(hex)) return;
+      list.push([name,hex]); stock[name]=csvBool(r.in_stock);
+    });
+    if(list.length){ COLORS=list; CONFIG.stock=stock; }
+  }
+  // Materials → replace materials map + display-name map
+  if(matRows && matRows.length){
+    const mats={}, names={};
+    matRows.forEach(r=>{
+      const key=(r.key||'').trim().toUpperCase(); if(!key) return;
+      const density=csvNum(r.density, null), cost=csvNum(r.cost_per_kg, null);
+      if(density===null||cost===null) return;
+      mats[key]={density, costPerKg:cost};
+      names[key]=(r.display_name||key).trim();
+    });
+    if(Object.keys(mats).length){ CONFIG.materials=mats; MAT_NAMES=names; }
+  }
+  // Pricing → key/value rows applied straight onto CONFIG
+  if(priceRows && priceRows.length){
+    const numericKeys=new Set(['throughput','hourlyRate','handling','markupLow','markupHigh',
+      'floor','wall','brimLines','brimLineWidth','firstLayer','overhangDeg','supportDensity','discordFileLimitMB']);
+    const boolKeys=new Set(['addBrim','addSupports']);
+    priceRows.forEach(r=>{
+      const k=(r.key||'').trim(); if(!k) return;
+      if(numericKeys.has(k)){ const n=csvNum(r.value, null); if(n!==null) CONFIG[k]=n; }
+      else if(boolKeys.has(k)){ CONFIG[k]=csvBool(r.value); }
+      else CONFIG[k]=r.value;
+    });
+  }
+  // Delivery → same key/value shape, plus a couple known-numeric keys
+  if(deliveryRows && deliveryRows.length){
+    deliveryRows.forEach(r=>{
+      const k=(r.key||'').trim(); if(!k) return;
+      if(k==='discordFileLimitMB'){ const n=csvNum(r.value, null); if(n!==null) CONFIG[k]=n; }
+      else CONFIG[k]=String(r.value||'').trim();
+    });
+  }
+}
+
+const DEFAULTS = JSON.parse(JSON.stringify(CONFIG));
+const Store = {
+  async get(k){
+    if(window.storage && window.storage.get){ try{ const r=await window.storage.get(k); return r?r.value:null; }catch(e){ return null; } }
+    try{ return localStorage.getItem(k); }catch(e){ return null; }
+  },
+  async set(k,v){
+    if(window.storage && window.storage.set){ try{ await window.storage.set(k,v); }catch(e){} return; }
+    try{ localStorage.setItem(k,v); }catch(e){}
+  },
+  async del(k){
+    if(window.storage && window.storage.delete){ try{ await window.storage.delete(k); }catch(e){} return; }
+    try{ localStorage.removeItem(k); }catch(e){}
+  }
+};
+// One-time cleanup: clear any settings the old version had saved to this browser,
+// so a stale local copy can never override the Sheet on future visits.
+async function clearLegacySettings(){
+  try{ await Store.del('pq_settings'); }catch(e){}
+}
+function wireGate(){
+  const owner=document.getElementById('owner'), lock=document.getElementById('ownerLock'),
+        body=document.getElementById('ownerBody'), pass=document.getElementById('ownerPass'),
+        err=document.getElementById('ownerErr');
+  let unlocked=false;
+  const close=()=>{ owner.classList.remove('open'); lock.hidden=true; body.hidden=true; };
+  document.getElementById('ownerToggle').onclick=()=>{
+    if(owner.classList.contains('open')){ close(); return; }
+    owner.classList.add('open');
+    if(unlocked){ body.hidden=false; lock.hidden=true; }
+    else { lock.hidden=false; body.hidden=true; err.textContent=''; pass.value=''; pass.focus(); }
+  };
+  const tryUnlock=()=>{
+    if(pass.value===CONFIG.ownerPassword){ unlocked=true; lock.hidden=true; body.hidden=false; err.textContent=''; }
+    else { err.textContent='Wrong password — try again.'; pass.select(); }
+  };
+  document.getElementById('ownerUnlock').onclick=tryUnlock;
+  pass.addEventListener('keydown',e=>{ if(e.key==='Enter') tryUnlock(); });
+  document.getElementById('ownerLockBtn').onclick=close;
+  // The "Open settings sheet" link
+  const link=document.getElementById('openSheet'), missing=document.getElementById('noSheetMsg');
+  if(CONFIG.settingsUrl){ link.href=CONFIG.settingsUrl; missing.hidden=true; }
+  else { link.removeAttribute('href'); link.style.opacity='0.5'; link.style.pointerEvents='none'; missing.hidden=false; }
+}
+
+/* init */
+async function init(){
+  await clearLegacySettings();          // forget any settings from the pre-Sheet era
+  await loadFromSheet();                // pull live config from Google Sheet (silently falls back if offline)
+  ensureStock();                        // default any colors with no Sheet stock entry to in-stock
+  buildSwatches(); buildMaterials(); buildStrength(); wireQty(); wireUnits();
+  wireGate(); buildOrderArea();
+  document.getElementById('notes').oninput=e=>{ const it=current(); if(it){ it.notes=e.target.value; renderTotals(); } };
+  initThree();
+  const stage=document.getElementById('stage'), fileInput=document.getElementById('file');
+  const open=()=>fileInput.click();
+  stage.onclick=()=>{ if(!items.length) open(); };   // click-to-add only when empty (so drag-to-rotate works once loaded)
+  document.getElementById('addMore').onclick=open;
+  fileInput.onchange=e=>{ loadFiles(e.target.files); e.target.value=''; };
+  ['dragenter','dragover'].forEach(ev=>stage.addEventListener(ev,e=>{e.preventDefault();stage.classList.add('drag');}));
+  ['dragleave','drop'].forEach(ev=>stage.addEventListener(ev,e=>{e.preventDefault();stage.classList.remove('drag');}));
+  stage.addEventListener('drop',e=>loadFiles(e.dataTransfer.files));
+  renderAll();
+}
+init();
+</script>
+</body>
+</html>
